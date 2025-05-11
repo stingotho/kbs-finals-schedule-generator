@@ -3,7 +3,17 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment
 from fpdf import FPDF
-import os
+import requests
+from io import BytesIO
+
+# GitHub-hosted Excel file URLs
+GITHUB_RAW = "https://raw.githubusercontent.com/stingotho/kbs-finals-schedule-generator/main/"
+DEFAULT_PROCTORING_URL = GITHUB_RAW + "Main%20Proctoring.xlsx"
+DEFAULT_ROSTER_URL = GITHUB_RAW + "Main%20Roster%20Schedule.xlsx"
+
+def load_excel_from_url(url):
+    response = requests.get(url)
+    return BytesIO(response.content)
 
 def extract_teacher_names(proctoring_df, morning_df, after_df, dates):
     names = set()
@@ -38,13 +48,11 @@ def generate_pdf(schedule, output_path):
     pdf.add_page()
     pdf.set_font("Arial", size=10)
     pdf.set_fill_color(220, 220, 220)
-
     col_widths = [45, 45, 50, 50]
     headers = ["Date", "Proctoring Room", "Morning Duty", "After Exam Duty"]
     for i, header in enumerate(headers):
         pdf.cell(col_widths[i], 10, header.encode('latin-1', 'replace').decode('latin-1'), border=1, fill=True)
     pdf.ln()
-
     for row in schedule:
         pdf.cell(col_widths[0], 10, row["Date"].encode('latin-1', 'replace').decode('latin-1'), border=1)
         pdf.cell(col_widths[1], 10, row["Proctoring Room"].encode('latin-1', 'replace').decode('latin-1'), border=1)
@@ -53,11 +61,15 @@ def generate_pdf(schedule, output_path):
         pdf.ln()
     pdf.output(output_path)
 
-st.set_page_config(page_title="📅 Schedule Generator", layout="centered")
-st.title("📅 Teacher Schedule Generator")
+st.set_page_config(page_title="📅 KBS Schedule Generator", layout="centered")
+st.title("📅 KBS Finals Schedule Generator")
 
-proctoring_file = st.file_uploader("Upload Proctoring Excel File", type="xlsx")
-roster_file = st.file_uploader("Upload Duty Roster Excel File", type="xlsx")
+uploaded_proctor = st.file_uploader("Upload Proctoring Excel File", type="xlsx", key="proctor")
+uploaded_roster = st.file_uploader("Upload Duty Roster Excel File", type="xlsx", key="roster")
+
+# Load default if not uploaded
+proctoring_file = uploaded_proctor or load_excel_from_url(DEFAULT_PROCTORING_URL)
+roster_file = uploaded_roster or load_excel_from_url(DEFAULT_ROSTER_URL)
 
 if proctoring_file and roster_file:
     roster_df = pd.read_excel(roster_file, header=None)
@@ -83,25 +95,21 @@ if proctoring_file and roster_file:
                 morning = morning_df.loc[morning_df[date].astype(str).str.contains(selected_teacher, na=False), "Duty Role"]
                 after = after_df.loc[after_df[date].astype(str).str.contains(selected_teacher, na=False), "Duty Role"]
                 proctoring = proctoring_df.loc[proctoring_df[date].astype(str).str.contains(selected_teacher, na=False), "Room"]
-
                 schedule.append({
                     "Date": date,
                     "Proctoring Room": proctoring.values[0] if not proctoring.empty else "—",
                     "Morning Duty": morning.values[0] if not morning.empty else "—",
                     "After Exam Duty": after.values[0] if not after.empty else "—"
                 })
-
             st.dataframe(pd.DataFrame(schedule))
     else:
         selected_teacher = st.selectbox("Select a teacher:", all_teachers)
         export_format = st.radio("Choose export format:", ["Excel", "PDF", "Both"])
-
         schedule = []
         for date in dates:
             morning = morning_df.loc[morning_df[date].astype(str).str.contains(selected_teacher, na=False), "Duty Role"]
             after = after_df.loc[after_df[date].astype(str).str.contains(selected_teacher, na=False), "Duty Role"]
             proctoring = proctoring_df.loc[proctoring_df[date].astype(str).str.contains(selected_teacher, na=False), "Room"]
-
             schedule.append({
                 "Date": date,
                 "Proctoring Room": proctoring.values[0] if not proctoring.empty else "—",
